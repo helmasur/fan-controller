@@ -11,32 +11,19 @@
 
 
 //-------------------------- GLOBALS ----------------------
-
 uint8_t button_pressed = 0;             // Interrupt from button on RC4 sets this to 1
-
-
 float target_temp;                      // Wanted temperature, set by user via potentiometer on RC0
-
 float temp;                             // Temperature from NTC, updated ~100/s (main loop)
 float meanList[MEANSIZE];               // Values of temp to calculate a moving average
 float tempAvg = 0;                      // Moving average temperature
 float tempHistory[TEMPHISTORYSIZE];     // Historical samples of tempAvg
-
 float tempDelta = 0;                    // Temperature difference over the last second
 float temp_diff = 0;                    // Distance to target; target_temp - tempAvg
-
 float potPos_u = 0;                     // Potentiometer position 0...1
-
 float duty = .5;                        // Output duty cycle
-
 uint8_t mode = 1;                       // Current mode of operation
-
-// Mode 1
-float numerator = 1, denominator = 2;
-// Mode 2
-float step_size = 0.01;
-
-
+float numerator = 1, denominator = 2;   // Mode 1
+float step_size = 0.01;                 // Mode 2
 
 //-------------------------- PROTOTYPES ---------------------
 void btnPressedSet();
@@ -139,7 +126,6 @@ void btnPressedReset(){
 }
 
 
-
 float tempAvgMake(float value){
     static uint16_t nextEntry = 0;
     static float sum = 0;
@@ -164,18 +150,18 @@ void tempHistoryMake(float value){
     if (nextEntry == TEMPHISTORYSIZE) nextEntry = 0;
 }
 
-
 float tempGet(){
     static const float ntc_a = 0.003354016;
     static const float ntc_b = 0.0002744032;
     static const float resistor = 9850.0;
 
     float ntc = (float)ADC_GetConversion(NTC);
-    ntc -= 39; //kompensera f�r nollniv� som inte �r noll
+    ntc -= 39; //zero level offset adjustment
     if (ntc < 1.0) ntc = 1.0;
 
-    float ntc_resistance = resistor * ((984.0/ntc) - 1.0); //984 eftersom nollpunkten har offset
-    // resistans 24399 ok
+    // NTC on high side gives Rntc=(R(V1-V2))/V2 => Rntc=R((V1/V2)-1)
+    float ntc_resistance = resistor * ((984.0/ntc) - 1.0); // 1023-39 offset gives 984 for max voltage
+    // resistance 24399 ok
     float ratio = ntc_resistance / (22000.0); //22000 is NTC reference resistance at 25 celsius;
     float log_ratio = log(ratio);
     return (1.0 / (ntc_a + (ntc_b * log_ratio) )) - 273.15;
