@@ -1,47 +1,25 @@
-/**
-  Generated Main Source File
 
-  Company:
-    Microchip Technology Inc.
+//Curiosity LEDs: 4,5,6,7   RA5     RA1     RA2     RC5
+//          PIN:            2       18      17      5
 
-  File Name:
-    main.c
+//        Test minsta ADC värde: 39. Max 1023.
 
-  Summary:
-    This is the main file generated using PIC10 / PIC12 / PIC16 / PIC18 MCUs 
+//                          M FLÄKT     UTAN
+//         Test MAX temp:   38          78C
+//              MIN         21          21
+//              DIFF        17          57
+//              1/DIFF      0,0588      0,0175   
+//              /250                    7,0175e-5
+//
+/* PWM  Temp u. fläkt
+ * 0%   22C
+ * 25%  44C
+ * 50%  61C
 
-  Description:
-    This header file provides implementations for driver APIs for all modules selected in the GUI.
-    Generation Information :
-        Product Revision  :  PIC10 / PIC12 / PIC16 / PIC18 MCUs  - 1.45
-        Device            :  PIC16F1619
-        Driver Version    :  2.00
-    The generated drivers are tested against the following:
-        Compiler          :  XC8 1.35
-        MPLAB             :  MPLAB X 3.40
 */
 
-/*
-    (c) 2016 Microchip Technology Inc. and its subsidiaries. You may use this
-    software and any derivatives exclusively with Microchip products.
 
-    THIS SOFTWARE IS SUPPLIED BY MICROCHIP "AS IS". NO WARRANTIES, WHETHER
-    EXPRESS, IMPLIED OR STATUTORY, APPLY TO THIS SOFTWARE, INCLUDING ANY IMPLIED
-    WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY, AND FITNESS FOR A
-    PARTICULAR PURPOSE, OR ITS INTERACTION WITH MICROCHIP PRODUCTS, COMBINATION
-    WITH ANY OTHER PRODUCTS, OR USE IN ANY APPLICATION.
 
-    IN NO EVENT WILL MICROCHIP BE LIABLE FOR ANY INDIRECT, SPECIAL, PUNITIVE,
-    INCIDENTAL OR CONSEQUENTIAL LOSS, DAMAGE, COST OR EXPENSE OF ANY KIND
-    WHATSOEVER RELATED TO THE SOFTWARE, HOWEVER CAUSED, EVEN IF MICROCHIP HAS
-    BEEN ADVISED OF THE POSSIBILITY OR THE DAMAGES ARE FORESEEABLE. TO THE
-    FULLEST EXTENT ALLOWED BY LAW, MICROCHIP'S TOTAL LIABILITY ON ALL CLAIMS IN
-    ANY WAY RELATED TO THIS SOFTWARE WILL NOT EXCEED THE AMOUNT OF FEES, IF ANY,
-    THAT YOU HAVE PAID DIRECTLY TO MICROCHIP FOR THIS SOFTWARE.
-
-    MICROCHIP PROVIDES THIS SOFTWARE CONDITIONALLY UPON YOUR ACCEPTANCE OF THESE
-    TERMS.
-*/
 
 //#include <xc.h>
 #include "mcc_generated_files/mcc.h"
@@ -49,8 +27,27 @@
 
 #define BTIME 100
 
+//-------------------------- VARIABLES ----------------------
+
 unsigned char ledstate = 0;
 unsigned char button_pressed = 0;
+unsigned char timer1_bang = 0;
+//int pot_value = 0;
+//int ntc_value = 0;
+double temp = 0;
+double pot_pos = 0;
+double target_temp = 30;
+double step_size = 0.01;
+double duty = 0;
+//double exponent = 0;
+double temp_old = 0;
+double temp_delta = 0;
+int delta_int = 0;
+int pwm_was_maxed = 0;
+int temp_was_right = 0;
+double step_factor = 0.0001;
+
+//-------------------------- FUNCTIONS ---------------------
 
 void set_button_pressed(){
     button_pressed = 1;
@@ -60,21 +57,24 @@ void reset_button_pressed(){
     button_pressed = 0;
 }
 
-unsigned int calc_temp(unsigned int adc_val_int){
-    double adc_val = (double)adc_val_int;
-    adc_val -= 39; //kompensera för nollnivå som inte är noll
-    if (adc_val < 1.0) adc_val = 1.0;
+
+
+double getTemp(){
+    double ntc = (double)ADC_GetConversion(NTC);
+    ntc -= 39; //kompensera för nollnivå som inte är noll
+    if (ntc < 1.0) ntc = 1.0;
     double ntc_a = 0.003354016;
     double ntc_b = 0.0002744032;
     double resistor = 9850.0;
-    double ntc_resistance = resistor * ((984.0/adc_val) - 1.0); //984 efterson nollpunkten har offset
+    double ntc_resistance = resistor * ((984.0/ntc) - 1.0); //984 eftersom nollpunkten har offset
     // resistans 24399 ok
     double ratio = ntc_resistance / (22000.0); //22000 is NTC reference resistance at 25 celsius;
     double log_ratio = log(ratio);
-    double temp = 1.0 / (ntc_a + (ntc_b * log_ratio) );
-    temp -= 273.15;
-    temp *= 10.0;
-    return (int)temp;
+    return (1.0 / (ntc_a + (ntc_b * log_ratio) )) - 273.15;
+}
+
+void timer1SetBang(){
+    timer1_bang = 1;
 }
 
 void leds_on(){
@@ -116,6 +116,8 @@ void blink_1(){
     __delay_ms(BTIME);
 }
 
+
+
 void blink_int(unsigned int value){
     leds_off();
     blink_1();
@@ -131,21 +133,41 @@ void blink_int(unsigned int value){
     __delay_ms(2000);
 }
 
-void blink_temp(void){
-    unsigned int current_value;
-    current_value = ADC_GetConversion(NTC);
-    current_value = current_value >> 6;
-    unsigned int temp = (unsigned int)calc_temp(current_value);
+void blink_1000(){
     leds_off();
-    for(int pos=0; pos<4; pos++){
-        blink_1();
-        set_leds(temp);
-        __delay_ms(1500);
-        leds_off();
-        temp = temp << 4;
-    }
-    __delay_ms(2500);
+    LED_D7_SetHigh();
+    LED_D6_SetLow();
+    LED_D5_SetLow();
+    LED_D4_SetLow();
+    __delay_ms(50);
+    leds_off();
 }
+
+void blink_0001(){
+    leds_off();
+    LED_D7_SetLow();
+    LED_D6_SetLow();
+    LED_D5_SetLow();
+    LED_D4_SetHigh();
+    __delay_ms(50);
+    leds_off();
+}
+
+//void blink_temp(void){
+//    unsigned int current_value;
+//    current_value = ADC_GetConversion(NTC);
+//    current_value = current_value >> 6;
+//    unsigned int temp = (unsigned int)calc_temp(current_value);
+//    leds_off();
+//    for(int pos=0; pos<4; pos++){
+//        blink_1();
+//        set_leds(temp);
+//        __delay_ms(1500);
+//        leds_off();
+//        temp = temp << 4;
+//    }
+//    __delay_ms(2500);
+//}
 
 void blink_current_int(void){
     unsigned int current_value;
@@ -166,28 +188,6 @@ void blink_current_int(void){
     __delay_ms(2000);
 }
 
-void seg_off(){
-//    IO_RC1_SetHigh();
-    IO_RC2_SetHigh();
-    IO_RB4_SetHigh();
-    IO_RB5_SetHigh();
-    IO_RB6_SetHigh();
-    IO_RC7_SetHigh();
-    IO_RC6_SetHigh();
-    IO_RC3_SetHigh();
-}
-
-void seg_nr(char num){
-    seg_off();
-    if (num==1){
-        IO_RC7_SetLow();
-        IO_RC6_SetLow();
-    }
-    else if (num==2){
-        
-    }
-}
-
 void switchleds(){
         if (ledstate == 1){
             leds_off();
@@ -201,90 +201,101 @@ void switchleds(){
 
 
 
-
-/*
-                         Main application
- */
+//------------------------------ MAIN --------------------
 void main(void)
 {
-    int adcResult;
-    unsigned int temp = 0;
-    
-    // initialize the device
+    // initialize stuff
     SYSTEM_Initialize();
-
-    // When using interrupts, you need to set the Global and Peripheral Interrupt Enable bits
-    // Use the following macros to:
-
-    // Enable the Global Interrupts
-    INTERRUPT_GlobalInterruptEnable();
-
-    // Enable the Peripheral Interrupts
-    INTERRUPT_PeripheralInterruptEnable();
-
-    // Disable the Global Interrupts
-    //INTERRUPT_GlobalInterruptDisable();
-
-    // Disable the Peripheral Interrupts
-    //INTERRUPT_PeripheralInterruptDisable();
-    
-//    TMR1_SetInterruptHandler(switchleds);
-    //Enable the TMR0 Interrupts 
-//    TMR1IE = 1;
+    TMR1_Initialize();
+    INTERRUPT_GlobalInterruptEnable();  // When using interrupts, you need to set the Global and Peripheral Interrupt Enable bits
+    INTERRUPT_PeripheralInterruptEnable();  // When using interrupts, you need to set the Global and Peripheral Interrupt Enable bits
+    TMR1_SetInterruptHandler(timer1SetBang);
     INT_SetInterruptHandler(set_button_pressed);
     EXT_INT_fallingEdgeSet();
-    
-    
+    EUSART_Initialize();
 
+    TMR1_StartTimer();
     
-    
-    
-//    662 689     659 704 706
-    
-    
-    IO_RA0_SetHigh();       //tänder led
-//    IO_RC1_SetLow();
-    IO_RC2_SetLow();
-    IO_RB4_SetLow();
-    IO_RB5_SetLow();
-    IO_RB6_SetLow();
-    IO_RC7_SetLow();
-    IO_RC6_SetLow();
-    IO_RC3_SetLow();
-    
-    
-    
+    double temp_diff = 0;
+    //---------------------------- MAIN LOOP -----------------------------
     while (1)
     {
         if (button_pressed == 1){
-            blink_temp();
+            //blink_temp();
             reset_button_pressed();
         }
         
+        //get potentiometer, temperature
+        pot_pos = ADC_GetConversion(POT) / 1023.0;
+        temp = getTemp();
         
-//        __delay_ms(50);
+        // 1-sec timer
+        if (timer1_bang == 1){
+            timer1_bang = 0;
+            temp_delta = temp - temp_old;
+            temp_old = temp;
+        }
         
-//        __delay_ms(950);
+        target_temp = (pot_pos * 25)+25;
+        temp_diff = target_temp - temp;
+        step_size =  temp_diff * step_factor;
         
-        //Curiosity LEDs: 4,5,6,7   RA5     RA1     RA2     RC5
-        //          PIN:            2       18      17      5
+        if ((int)round(temp_diff == 0)) temp_was_right = 1;
         
-//        Test minsta ADC värde: 39. Max 1023.
-        
-        
-        //Start ADC conversion
-        adcResult = ADC_GetConversion(NTC);
-        
+        //limit step size
+        if (step_size > 1) step_size = 1;
+        if (step_size < -1) step_size = -1;
         
         
-        adcResult = adcResult >> 6;
-//        adcResult -= 650;
-//        adcResult *= 17;
+        //PWM
+        duty += step_size; //duty 0...1
+        if (duty >= 1){
+        duty = 1;
+        pwm_was_maxed = 1;
+        }
+        if (duty <= 0){
+            duty = 0;
+            pwm_was_maxed = 1;
+        }
         
+        if(pwm_was_maxed && temp_was_right){
+            pwm_was_maxed = 0;
+            temp_was_right = 0;
+            //duty = 0.5;
+            step_factor *= 0.5;
+        }
+        
+        PWM3_LoadDutyValue((int)round(duty*1023));
+        //PWM3_LoadDutyValue((int)round(0.25*1023));
+        
+        
+        
+        //EUSART debug output
+        EUSART_Write((int)round(temp));
+        //__delay_ms(1);
+//        if (temp_delta < 0) temp_delta = -temp_delta;
+//        EUSART_Write((int)round(temp_delta*10));
+        
+        //status LEDs
+        if (step_size > 0){
+            LED_D6_SetLow();            
+            LED_D5_SetHigh();
+        }
+        if (step_size < 0){
+            LED_D6_SetHigh();
+            LED_D5_SetLow();
+        }
+        if (step_size == 0){
+            LED_D6_SetLow();
+            LED_D5_SetLow();
+        }
+        if (duty == 1) LED_D4_SetHigh();
+        else LED_D4_SetLow();
 
-        //Make the adcResult the PWM duty cycle
-//        PWM3_LoadDutyValue(adcResult);
-        temp = calc_temp(adcResult);
+        if (duty == 0) LED_D7_SetHigh();
+        else LED_D7_SetLow();
+
+        //__delay_ms(10);
     }
 }
 /**
