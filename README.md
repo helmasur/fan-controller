@@ -4,7 +4,7 @@ It alternates between two modes, mode1 is using simple hysteresis, mode2 is tryi
 
 ![Pinout image](pinout.png)
 
-Pin 10: Fan PWM output
+Pin 10: Fan PWM output  
 Pin 15: NTC voltage divider input
 
 NTC is on high side with 10k on low side.
