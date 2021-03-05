@@ -44,6 +44,53 @@
 */
 
 #include "mcc_generated_files/mcc.h"
+#include <math.h>
+
+#define BTIME 100
+
+void leds_on(){
+    LED_4_SetHigh();
+    LED_5_SetHigh();
+    LED_6_SetHigh();
+    LED_7_SetHigh();
+}
+
+void leds_off(){
+    LED_4_SetLow();
+    LED_5_SetLow();
+    LED_6_SetLow();
+    LED_7_SetLow();
+}
+
+void blink(){
+    leds_on();
+    __delay_ms(BTIME);
+    leds_off();
+    __delay_ms(BTIME);
+}
+
+void set_leds(int value){
+    if (value & 0b1000000000000000) LED_7_SetHigh();
+    else LED_7_SetLow();
+    if (value & 0b0100000000000000) LED_6_SetHigh();
+    else LED_6_SetLow();
+    if (value & 0b0010000000000000) LED_5_SetHigh();
+    else LED_5_SetLow();
+    if (value & 0b0001000000000000) LED_4_SetHigh();
+    else LED_4_SetLow();
+}
+
+void blink_int(unsigned int value){
+    leds_off();
+    for(int pos=0; pos<4; pos++){
+        blink();
+        set_leds(value);
+        __delay_ms(1500);
+        leds_off();
+        value = value << 4;
+    }
+    __delay_ms(2000);
+}
 
 /*
                          Main application
@@ -70,6 +117,10 @@ void main(void)
 
     while (1)
     {
+        double qwer = log(1.14)*1000;
+        int asdf = (int)qwer;
+        blink_int(qwer);
+        
         // Add your application code
     }
 }
